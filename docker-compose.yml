@@ -1,0 +1,30 @@
+services:
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: devpilot-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE:-devpilot}
+      POSTGRES_USER: ${POSTGRES_USERNAME:-devpilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpilot}
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USERNAME:-devpilot} -d ${POSTGRES_DATABASE:-devpilot}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
