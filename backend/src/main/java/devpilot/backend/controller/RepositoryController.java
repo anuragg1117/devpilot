@@ -1,17 +1,16 @@
-package devpilot.backend.controllers;
+package devpilot.backend.controller;
 
 import java.util.List;
 import java.util.UUID;
 
+import devpilot.backend.dto.CodeChunk;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import devpilot.backend.dto.RepositoryResponse;
 import devpilot.backend.security.AppUserPrincipal;
 import devpilot.backend.security.CurrentUser;
+import devpilot.backend.service.RepositoryIndexingService;
 import devpilot.backend.service.RepositoryService;
 import lombok.RequiredArgsConstructor;
 
@@ -22,6 +21,7 @@ public class RepositoryController {
 
     private final CurrentUser currentUser;
     private final RepositoryService repositoryService;
+    private final RepositoryIndexingService repositoryIndexingService;
 
     @PostMapping("/sync")
     public ResponseEntity<List<RepositoryResponse>> syncRepositories() {
@@ -54,4 +54,23 @@ public class RepositoryController {
                 )
         );
     }
+
+    @PostMapping("/{repositoryId}/index")
+    public ResponseEntity<List<CodeChunk>> indexRepository(
+            @PathVariable UUID repositoryId) {
+
+        AppUserPrincipal principal =
+                currentUser.require();
+
+        UUID userId =
+                principal.getUser().getId();
+
+        return ResponseEntity.ok(
+                repositoryIndexingService.indexRepository(
+                        repositoryId,
+                        userId
+                )
+        );
+    }
 }
+

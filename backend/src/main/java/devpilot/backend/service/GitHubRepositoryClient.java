@@ -1,53 +1,85 @@
 package devpilot.backend.service;
 
+import java.util.Arrays;
 import java.util.List;
 
+import devpilot.backend.dto.GitHubFileResponse;
+import devpilot.backend.dto.GitHubTreeResponse;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import devpilot.backend.dto.GitHubRepositoryResponse;
-import lombok.RequiredArgsConstructor;
 
-@Service
-@RequiredArgsConstructor
+@Component
 public class GitHubRepositoryClient {
 
-    private final RestClient.Builder restClientBuilder;
+    private final RestClient restClient;
 
-    @Value("${github.api.base-url}")
-    private String githubApiBaseUrl;
+    public GitHubRepositoryClient(
+            RestClient.Builder restClientBuilder,
+            @Value("${github.api.base-url}") String baseUrl) {
 
-    public List<GitHubRepositoryResponse> getRepositories(
-            String accessToken) {
-
-        RestClient restClient = restClientBuilder
-                .baseUrl(githubApiBaseUrl)
+        this.restClient = restClientBuilder
+                .baseUrl(baseUrl)
                 .build();
+    }
 
-        return restClient
-                .get()
+    public List<GitHubRepositoryResponse> getRepositories(String accessToken) {
+
+        GitHubRepositoryResponse[] repositories = restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/user/repos")
+                        .queryParam("visibility", "all")
+                        .queryParam("affiliation", "owner,collaborator,organization_member")
                         .queryParam("per_page", 100)
-                        .queryParam("sort", "updated")
                         .build())
-                .header(
-                        HttpHeaders.AUTHORIZATION,
-                        "Bearer " + accessToken
-                )
-                .header(
-                        HttpHeaders.ACCEPT,
-                        MediaType.APPLICATION_JSON_VALUE
-                )
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
                 .retrieve()
-                .body(
-                        new ParameterizedTypeReference<
-                                List<GitHubRepositoryResponse>>() {
-                        }
-                );
+                .body(GitHubRepositoryResponse[].class);
+
+        return repositories == null
+                ? List.of()
+                : Arrays.asList(repositories);
     }
+
+    public GitHubTreeResponse getRepositoryTree(
+            String accessToken,
+            String owner,
+            String repository,
+            String branch) {
+
+        return restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/repos/{owner}/{repo}/git/trees/{branch}")
+                        .queryParam("recursive", "1")
+                        .build(owner, repository, branch))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .retrieve()
+                .body(GitHubTreeResponse.class);
+    }
+
+    public GitHubFileResponse getFile(
+            String accessToken,
+            String owner,
+            String repository,
+            String path,
+            String branch) {
+
+        return restClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/repos/{owner}/{repo}/contents/{path}")
+                        .queryParam("ref", branch)
+                        .build(owner, repository, path))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .retrieve()
+                .body(GitHubFileResponse.class);
+    }
+
+
 }
