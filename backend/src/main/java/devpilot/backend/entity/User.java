@@ -1,47 +1,120 @@
 package devpilot.backend.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
-
 import java.time.Instant;
 import java.util.UUID;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "users")
 @Getter
 @Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "github_id", nullable = false, unique = true)
+    /**
+     * GitHub's unique user ID.
+     *
+     * This is the primary external identifier used to
+     * find an existing DevPilot user during OAuth login.
+     */
+    @Column(
+            name = "github_id",
+            nullable = false,
+            unique = true
+    )
     private Long githubId;
 
-    @Column(name = "github_username", nullable = false, length = 100)
+    /**
+     * GitHub username/login.
+     */
+    @Column(
+            name = "github_username",
+            nullable = false,
+            length = 100
+    )
     private String githubUsername;
 
-    @Column(name = "display_name", nullable = false, length = 200)
+    /**
+     * GitHub display name.
+     *
+     * Falls back to githubUsername when GitHub does not
+     * provide a display name.
+     */
+    @Column(
+            name = "display_name",
+            nullable = false,
+            length = 200
+    )
     private String displayName;
 
-    @Column(name = "avatar_url", length = 500)
+    /**
+     * GitHub avatar URL.
+     */
+    @Column(
+            name = "avatar_url",
+            length = 500
+    )
     private String avatarUrl;
 
-    @Column(name = "access_token", nullable = false, columnDefinition = "TEXT")
+    /**
+     * Encrypted GitHub OAuth access token.
+     *
+     * NEVER expose this field through an API response.
+     * UserService encrypts the token before persistence.
+     */
+    @Column(
+            name = "access_token",
+            nullable = false,
+            columnDefinition = "TEXT"
+    )
     private String accessToken;
 
-    @Column(name = "token_scopes", length = 500)
+    /**
+     * OAuth scopes granted by GitHub.
+     *
+     * Example:
+     * read:user,user:email,repo
+     */
+    @Column(
+            name = "token_scopes",
+            length = 500
+    )
     private String tokenScopes;
 
-    @Column(name = "created_at", nullable = false)
+    /**
+     * Time when the DevPilot user was created.
+     */
+    @Column(
+            name = "created_at",
+            nullable = false,
+            updatable = false
+    )
     private Instant createdAt;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = Instant.now();
+
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
     }
 }
