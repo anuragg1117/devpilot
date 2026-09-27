@@ -16,7 +16,7 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 
-import devPilot.backend.security.GithubOAuth2UserService;
+import devpilot.backend.security.GithubOAuth2UserService;
 import lombok.RequiredArgsConstructor;
 
 @Configuration

@@ -1,4 +1,4 @@
-package devpilot.backend.services;
+package devpilot.backend.service;
 
 import java.util.Map;
 import java.util.UUID;
