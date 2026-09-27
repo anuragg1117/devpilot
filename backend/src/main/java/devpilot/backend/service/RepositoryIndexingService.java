@@ -10,12 +10,12 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import devpilot.backend.dto.CodeChunk;
 import devpilot.backend.dto.GitHubFileResponse;
 import devpilot.backend.dto.GitHubTreeResponse;
 import devpilot.backend.entity.IndexStatus;
 import devpilot.backend.entity.Repository;
 import devpilot.backend.entity.User;
+import devpilot.backend.repository.CodeChunkRepository;
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -27,16 +27,21 @@ public class RepositoryIndexingService {
     private final GitHubRepositoryClient githubRepositoryClient;
     private final CodeFileFilter codeFileFilter;
     private final CodeChunker codeChunker;
+    private final CodeChunkRepository codeChunkRepository;
 
     @Transactional
-    public List<CodeChunk> indexRepository(
+    public List<devpilot.backend.dto.CodeChunk> indexRepository(
             UUID repositoryId,
             UUID userId) {
 
         Repository repository =
-                repositoryService.getRepository(repositoryId, userId);
+                repositoryService.getRepository(
+                        repositoryId,
+                        userId
+                );
 
-        User user = userService.requiredById(userId);
+        User user =
+                userService.requiredById(userId);
 
         String accessToken =
                 userService.decryptAccessToken(user);
@@ -70,7 +75,16 @@ public class RepositoryIndexingService {
 
             repository.setFilesTotal(files.size());
 
-            List<CodeChunk> allChunks = new ArrayList<>();
+            /*
+             * Remove chunks from a previous indexing run.
+             * This makes re-indexing safe.
+             */
+            codeChunkRepository.deleteByRepositoryId(
+                    repositoryId
+            );
+
+            List<devpilot.backend.dto.CodeChunk> allChunks =
+                    new ArrayList<>();
 
             for (GitHubTreeResponse.TreeItem file : files) {
 
@@ -83,17 +97,37 @@ public class RepositoryIndexingService {
                                 repository.getDefaultBranch()
                         );
 
-                if (response == null || response.content() == null) {
+                if (response == null ||
+                        response.content() == null) {
                     continue;
                 }
 
-                String content = decodeContent(response.content());
+                String content =
+                        decodeContent(response.content());
 
-                List<CodeChunk> chunks =
+                List<devpilot.backend.dto.CodeChunk> chunks =
                         codeChunker.chunk(
                                 file.path(),
                                 content
                         );
+
+                /*
+                 * Convert DTO chunks into database entities.
+                 */
+                List<devpilot.backend.entity.CodeChunk> entities =
+                        chunks.stream()
+                                .map(chunk ->
+                                        devpilot.backend.entity.CodeChunk
+                                                .builder()
+                                                .repositoryId(repositoryId)
+                                                .filePath(chunk.filePath())
+                                                .chunkIndex(chunk.chunkIndex())
+                                                .content(chunk.content())
+                                                .build()
+                                )
+                                .toList();
+
+                codeChunkRepository.saveAll(entities);
 
                 allChunks.addAll(chunks);
 
@@ -106,14 +140,22 @@ public class RepositoryIndexingService {
                 );
             }
 
-            repository.setIndexStatus(IndexStatus.COMPLETED);
-            repository.setIndexedAt(Instant.now());
+            repository.setIndexStatus(
+                    IndexStatus.COMPLETED
+            );
+
+            repository.setIndexedAt(
+                    Instant.now()
+            );
 
             return allChunks;
 
         } catch (Exception exception) {
 
-            repository.setIndexStatus(IndexStatus.FAILED);
+            repository.setIndexStatus(
+                    IndexStatus.FAILED
+            );
+
             repository.setErrorMessage(
                     exception.getMessage()
             );
@@ -128,7 +170,9 @@ public class RepositoryIndexingService {
                 content.replaceAll("\\s", "");
 
         byte[] decoded =
-                Base64.getDecoder().decode(normalizedContent);
+                Base64.getDecoder().decode(
+                        normalizedContent
+                );
 
         return new String(
                 decoded,
