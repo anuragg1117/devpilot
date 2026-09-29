@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import devpilot.backend.dto.CodeChunk;
 import devpilot.backend.dto.GitHubFileResponse;
 import devpilot.backend.dto.GitHubTreeResponse;
 import devpilot.backend.entity.IndexStatus;
@@ -23,14 +24,21 @@ import lombok.RequiredArgsConstructor;
 public class RepositoryIndexingService {
 
     private final RepositoryService repositoryService;
+
     private final UserService userService;
+
     private final GitHubRepositoryClient githubRepositoryClient;
+
     private final CodeFileFilter codeFileFilter;
+
     private final CodeChunker codeChunker;
+
     private final CodeChunkRepository codeChunkRepository;
 
+    private final VectorStoreService vectorStoreService;
+
     @Transactional
-    public List<devpilot.backend.dto.CodeChunk> indexRepository(
+    public List<CodeChunk> indexRepository(
             UUID repositoryId,
             UUID userId) {
 
@@ -46,14 +54,23 @@ public class RepositoryIndexingService {
         String accessToken =
                 userService.decryptAccessToken(user);
 
-        repository.setIndexStatus(IndexStatus.INDEXING);
+        repository.setIndexStatus(
+                IndexStatus.INDEXING
+        );
+
         repository.setErrorMessage(null);
+
         repository.setFilesProcessed(0);
+
         repository.setFilesTotal(0);
+
         repository.setChunkCount(0);
 
         try {
 
+            /*
+             * 1. Get repository tree from GitHub.
+             */
             GitHubTreeResponse tree =
                     githubRepositoryClient.getRepositoryTree(
                             accessToken,
@@ -62,30 +79,40 @@ public class RepositoryIndexingService {
                             repository.getDefaultBranch()
                     );
 
+            /*
+             * 2. Find supported source files.
+             */
             List<GitHubTreeResponse.TreeItem> files =
                     tree.tree()
                             .stream()
-                            .filter(item -> "blob".equals(item.type()))
+                            .filter(item ->
+                                    "blob".equals(item.type())
+                            )
                             .filter(item ->
                                     codeFileFilter.isSupported(
                                             item.path(),
                                             item.size()
-                                    ))
+                                    )
+                            )
                             .toList();
 
-            repository.setFilesTotal(files.size());
+            repository.setFilesTotal(
+                    files.size()
+            );
 
             /*
-             * Remove chunks from a previous indexing run.
-             * This makes re-indexing safe.
+             * 3. Remove previous code chunks.
              */
             codeChunkRepository.deleteByRepositoryId(
                     repositoryId
             );
 
-            List<devpilot.backend.dto.CodeChunk> allChunks =
+            List<CodeChunk> allChunks =
                     new ArrayList<>();
 
+            /*
+             * 4. Download and chunk every file.
+             */
             for (GitHubTreeResponse.TreeItem file : files) {
 
                 GitHubFileResponse response =
@@ -99,37 +126,61 @@ public class RepositoryIndexingService {
 
                 if (response == null ||
                         response.content() == null) {
+
                     continue;
                 }
 
+                /*
+                 * 5. Decode GitHub Base64 content.
+                 */
                 String content =
-                        decodeContent(response.content());
+                        decodeContent(
+                                response.content()
+                        );
 
-                List<devpilot.backend.dto.CodeChunk> chunks =
+                /*
+                 * 6. Split source code into chunks.
+                 */
+                List<CodeChunk> chunks =
                         codeChunker.chunk(
                                 file.path(),
                                 content
                         );
 
                 /*
-                 * Convert DTO chunks into database entities.
+                 * 7. Convert DTOs into database entities.
                  */
                 List<devpilot.backend.entity.CodeChunk> entities =
                         chunks.stream()
                                 .map(chunk ->
                                         devpilot.backend.entity.CodeChunk
                                                 .builder()
-                                                .repositoryId(repositoryId)
-                                                .filePath(chunk.filePath())
-                                                .chunkIndex(chunk.chunkIndex())
-                                                .content(chunk.content())
+                                                .repositoryId(
+                                                        repositoryId
+                                                )
+                                                .filePath(
+                                                        chunk.filePath()
+                                                )
+                                                .chunkIndex(
+                                                        chunk.chunkIndex()
+                                                )
+                                                .content(
+                                                        chunk.content()
+                                                )
                                                 .build()
                                 )
                                 .toList();
 
-                codeChunkRepository.saveAll(entities);
+                /*
+                 * 8. Save chunks.
+                 */
+                codeChunkRepository.saveAll(
+                        entities
+                );
 
-                allChunks.addAll(chunks);
+                allChunks.addAll(
+                        chunks
+                );
 
                 repository.setFilesProcessed(
                         repository.getFilesProcessed() + 1
@@ -140,6 +191,19 @@ public class RepositoryIndexingService {
                 );
             }
 
+            /*
+             * 9. Generate embeddings.
+             *
+             * VectorStore will use the configured
+             * Spring AI EmbeddingModel.
+             */
+            vectorStoreService.indexRepository(
+                    repositoryId
+            );
+
+            /*
+             * 10. Indexing completed.
+             */
             repository.setIndexStatus(
                     IndexStatus.COMPLETED
             );
@@ -167,7 +231,10 @@ public class RepositoryIndexingService {
     private String decodeContent(String content) {
 
         String normalizedContent =
-                content.replaceAll("\\s", "");
+                content.replaceAll(
+                        "\\s",
+                        ""
+                );
 
         byte[] decoded =
                 Base64.getDecoder().decode(
