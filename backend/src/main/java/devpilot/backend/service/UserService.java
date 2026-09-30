@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import devpilot.backend.entity.User;
+import devpilot.backend.exceptions.ResourceNotFoundException;
 import devpilot.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 
@@ -76,7 +77,7 @@ public class UserService {
         return userRepository
                 .findById(id)
                 .orElseThrow(() ->
-                        new IllegalArgumentException(
+                        new ResourceNotFoundException(
                                 "User not found: " + id
                         )
                 );

@@ -10,6 +10,8 @@ import devpilot.backend.dto.GitHubRepositoryResponse;
 import devpilot.backend.dto.RepositoryResponse;
 import devpilot.backend.entity.Repository;
 import devpilot.backend.entity.User;
+import devpilot.backend.exceptions.ResourceAccessDeniedException;
+import devpilot.backend.exceptions.ResourceNotFoundException;
 import devpilot.backend.repository.RepositoryRepository;
 import lombok.RequiredArgsConstructor;
 
@@ -67,16 +69,27 @@ public class RepositoryService {
             UUID repositoryId,
             UUID userId) {
 
-        return repositoryRepository
-                .findByIdAndUserId(
-                        repositoryId,
-                        userId
-                )
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Repository not found"
-                        )
-                );
+        /*
+         * First determine whether the repository exists.
+         */
+        Repository repository =
+                repositoryRepository
+                        .findById(repositoryId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Repository not found"
+                                ));
+
+        /*
+         * The repository exists, but check ownership.
+         */
+        if (!repository.getUserId().equals(userId)) {
+            throw new ResourceAccessDeniedException(
+                    "You do not have access to this repository"
+            );
+        }
+
+        return repository;
     }
 
     private Repository upsertRepository(
